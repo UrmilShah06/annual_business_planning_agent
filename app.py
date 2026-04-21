@@ -1,12 +1,11 @@
-# app.py — Streamlit frontend for the annual business planning agent
-# run: streamlit run app.py
+# app.py - streamlit frontend for the annual business planning agent
+# run with: streamlit run app.py
 
 import os
 import json
 from pathlib import Path
 import streamlit as st
 
-# --- *** enter your openai api key here *** ---
 from dotenv import load_dotenv
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
@@ -26,7 +25,6 @@ from planning_agent import (
     load_df, load_assumptions, generate_word_document
 )
 
-# --- styles ---
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Source+Sans+3:wght@300;400;500;600&display=swap');
@@ -66,12 +64,35 @@ section[data-testid="stSidebar"] { background:#060c14; border-right:1px solid #1
     font-weight:600 !important; border:none !important; border-radius:8px !important; }
 .stButton>button:hover { background:#1b5e20 !important; }
 hr { border-color:#1e3a52 !important; }
+
+/* sidebar text visibility fixes */
+section[data-testid="stSidebar"] .stMarkdown p,
+section[data-testid="stSidebar"] .stMarkdown h3,
+section[data-testid="stSidebar"] .stMarkdown h4,
+section[data-testid="stSidebar"] .stMarkdown strong,
+section[data-testid="stSidebar"] label,
+section[data-testid="stSidebar"] .stSlider label,
+section[data-testid="stSidebar"] p { color:#ffffff !important; font-weight:600 !important; }
+section[data-testid="stSidebar"] .stSlider [data-testid="stMarkdownContainer"] p {
+    color:#ffffff !important; font-weight:600 !important;
+}
+section[data-testid="stSidebar"] .streamlit-expanderHeader p,
+section[data-testid="stSidebar"] .streamlit-expanderHeader {
+    color:#ffffff !important; font-weight:600 !important;
+}
+
+/* main content headers that were blending */
+h3 { color:#ffffff !important; font-weight:700 !important; }
+.stSelectbox label, .stNumberInput label { color:#ffffff !important; font-weight:600 !important; }
+.stDataFrame { color:#cde0ef; }
+[data-testid="stDataFrame"] p, [data-testid="stDataFrame"] span { color:#cde0ef !important; }
+.stCaption p { color:#8ab4c9 !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- session state ---
-for k, v in {
-    "stage": "setup",  # setup → running → reviewing → complete
+# session state defaults - need all keys initialised upfront to avoid KeyError on first run
+defaults = {
+    "stage": "setup",
     "workflow": None,
     "agent_outputs": {},
     "target_data": {},
@@ -88,14 +109,15 @@ for k, v in {
     "west_growth": 16.0,
     "loyalty_target": 45.0,
     "loyalty_contrib": 75.0,
-}.items():
+}
+
+for k, v in defaults.items():
     if k not in st.session_state:
         st.session_state[k] = v
 
-# --- sidebar — planning parameters ---
 with st.sidebar:
     st.markdown("### 📋 Planning Parameters")
-    st.markdown("<div style='color:#5a80a0;font-size:0.75rem;'>All inputs editable — change and re-run</div>",
+    st.markdown("<div style='color:#8ab4c9;font-size:0.75rem;font-weight:400;'>All inputs editable — change and re-run</div>",
                 unsafe_allow_html=True)
     st.markdown("---")
 
@@ -117,7 +139,9 @@ with st.sidebar:
         "Loyalty Revenue Contribution %", 50.0, 90.0, st.session_state.loyalty_contrib, 1.0)
 
     st.markdown("---")
+
     if st.button("🚀 Generate FY26 Plan"):
+        # reset everything before starting a new run
         st.session_state.update({
             "stage": "running", "agent_outputs": {}, "target_data": {},
             "loyalty_data": {}, "baseline_data": {}, "challenger_feedback": "",
@@ -125,7 +149,6 @@ with st.sidebar:
         })
         st.rerun()
 
-    # reset clears workflow state and all agent outputs
     if st.button("🔄 Reset"):
         st.session_state.update({
             "stage": "setup", "agent_outputs": {}, "target_data": {},
@@ -141,8 +164,8 @@ with st.sidebar:
                 unsafe_allow_html=True)
 
     st.markdown("---")
-    st.markdown("""<div style='font-size:0.72rem;color:#3a5a7a;line-height:1.6;'>
-<b style='color:#5a80a0;'>Stack</b><br>
+    st.markdown("""<div style='font-size:0.72rem;color:#8ab4c9;line-height:1.6;'>
+<b style='color:#ffffff;font-weight:700;'>Stack</b><br>
 LangGraph 4-Node Workflow<br>
 AutoGen Proposer/Challenger<br>
 Human-in-the-Loop Review<br>
@@ -151,7 +174,6 @@ python-docx Plan Document<br>
 OTB Cascade Engine
 </div>""", unsafe_allow_html=True)
 
-# --- header ---
 st.markdown(f"""
 <div class="plan-header">
     <h1>📊 Annual Business Planning Agent</h1>
@@ -166,9 +188,7 @@ tab_workflow, tab_targets, tab_loyalty, tab_autogen, tab_review, tab_plan, tab_d
     "📄 Business Plan", "📂 Data", "ℹ️ About"
 ])
 
-# --- workflow tab ---
 with tab_workflow:
-    # Key metrics row
     if st.session_state.target_data:
         import pandas as pd
         td = st.session_state.target_data
@@ -191,7 +211,6 @@ with tab_workflow:
 </div>""", unsafe_allow_html=True)
         st.markdown("")
 
-    # Agent cards
     agent_defs = [
         ("1", "Performance Baseline Analyst",
          "52-week FY25 actuals · seasonal analysis · store/category/brand baseline",
@@ -223,7 +242,6 @@ with tab_workflow:
                     unsafe_allow_html=True
                 )
 
-    # RUN WORKFLOW
     if st.session_state.stage == "running":
         with st.spinner("Running planning agents — Agents 1-3 take 2-3 minutes..."):
             try:
@@ -246,7 +264,6 @@ with tab_workflow:
                     api_key=OPENAI_API_KEY,
                 )
 
-                # Run until interrupt before business_plan_writer
                 result = wf.invoke(init_state, config=cfg)
 
                 st.session_state.agent_outputs = {
@@ -276,7 +293,6 @@ with tab_workflow:
                 st.markdown(f"<div style='color:#5a80a0;font-size:0.75rem;'>✓ {entry}</div>",
                             unsafe_allow_html=True)
 
-# --- store targets tab ---
 with tab_targets:
     if not st.session_state.target_data:
         st.info("Run the planning workflow to generate store targets.")
@@ -285,7 +301,6 @@ with tab_targets:
         td = st.session_state.target_data
         ld = st.session_state.loyalty_data
 
-        # Store targets table
         rows = []
         for store, data in td.items():
             loy = ld.get(store, {})
@@ -301,11 +316,12 @@ with tab_targets:
             })
 
         df = pd.DataFrame(rows)
-        st.markdown("### FY26 Store Revenue Targets")
+        st.markdown("<h3 style='color:#ffffff;font-weight:700;'>FY26 Store Revenue Targets</h3>",
+                    unsafe_allow_html=True)
         st.dataframe(df, use_container_width=True, height=380)
 
-        # Category targets per store
-        st.markdown("### Category Targets by Store")
+        st.markdown("<h3 style='color:#ffffff;font-weight:700;'>Category Targets by Store</h3>",
+                    unsafe_allow_html=True)
         store_sel = st.selectbox("Select store:", list(td.keys()))
         if store_sel:
             cat_rows = []
@@ -321,8 +337,8 @@ with tab_targets:
                 })
             st.dataframe(pd.DataFrame(cat_rows), use_container_width=True)
 
-        # Brand OTB table
-        st.markdown("### Brand OTB — Top 20 by Value")
+        st.markdown("<h3 style='color:#ffffff;font-weight:700;'>Brand OTB — All Brands by Value</h3>",
+                    unsafe_allow_html=True)
         otb_rows = []
         for store, data in td.items():
             for key, otb in data.get("brand_otb", {}).items():
@@ -338,17 +354,15 @@ with tab_targets:
 
         otb_df = pd.DataFrame(otb_rows)
         if not otb_df.empty:
-            # Chain-level OTB summary
             chain_otb = pd.DataFrame([{
                 "Category": r["Category"], "Brand": r["Brand"],
                 "OTB Value (L)": float(r["OTB Value (L)"].replace("INR ","").replace("L",""))
             } for r in otb_rows])
             chain_agg = chain_otb.groupby(["Category","Brand"])["OTB Value (L)"].sum().reset_index()
-            chain_agg = chain_agg.sort_values("OTB Value (L)", ascending=False).head(20)
+            chain_agg = chain_agg.sort_values("OTB Value (L)", ascending=False)
             chain_agg["OTB Value (L)"] = chain_agg["OTB Value (L)"].apply(lambda x: f"INR {x:.2f}L")
             st.dataframe(chain_agg, use_container_width=True, height=420)
 
-# --- loyalty tab ---
 with tab_loyalty:
     if not st.session_state.loyalty_data:
         st.info("Run the planning workflow to generate loyalty targets.")
@@ -356,7 +370,6 @@ with tab_loyalty:
         import pandas as pd
         ld = st.session_state.loyalty_data
 
-        # Loyalty summary table
         loy_rows = []
         for store, data in ld.items():
             loy_rows.append({
@@ -371,10 +384,10 @@ with tab_loyalty:
                 "Basket Premium (INR)": f"+{data['avg_basket_premium_INR']:,}",
             })
 
-        st.markdown("### FY26 Loyalty Targets by Store")
+        st.markdown("<h3 style='color:#ffffff;font-weight:700;'>FY26 Loyalty Targets by Store</h3>",
+                    unsafe_allow_html=True)
         st.dataframe(pd.DataFrame(loy_rows), use_container_width=True, height=380)
 
-        # Loyalty plan narrative
         with st.expander("📋 Full Loyalty Plan", expanded=False):
             plan = st.session_state.agent_outputs.get("loyalty_plan", "")
             st.markdown(
@@ -383,7 +396,6 @@ with tab_loyalty:
                 unsafe_allow_html=True
             )
 
-# --- autogen challenge tab ---
 with tab_autogen:
     st.markdown("""<div style='background:#0d1b0d;border:1px solid #1a4a1a;border-radius:10px;
 padding:1rem 1.5rem;margin-bottom:1rem;'>
@@ -392,8 +404,8 @@ padding:1rem 1.5rem;margin-bottom:1rem;'>
 </div>
 <div style='color:#8ab4c9;font-size:0.85rem;'>
 Agent 2 runs two GPT-4o calls in sequence.
-The <b>Proposer</b> sets targets using the cascade logic.
-The <b>Challenger</b> stress-tests each target for realism — flagging aggressive,
+The <b style='color:#ffffff;'>Proposer</b> sets targets using the cascade logic.
+The <b style='color:#ffffff;'>Challenger</b> stress-tests each target for realism — flagging aggressive,
 conservative, or at-risk targets. This debate pattern produces more robust plans
 than a single-pass generation.
 </div>
@@ -404,7 +416,8 @@ than a single-pass generation.
     else:
         col1, col2 = st.columns(2)
         with col1:
-            st.markdown("### 📈 Proposer Output (Target Plan)")
+            st.markdown("<h3 style='color:#ffffff;font-weight:700;'>📈 Proposer Output (Target Plan)</h3>",
+                        unsafe_allow_html=True)
             plan = st.session_state.agent_outputs.get("target_plan", "")
             st.markdown(
                 f"<div style='background:#0d1b2a;border:1px solid #1e3a52;border-radius:8px;"
@@ -414,7 +427,8 @@ than a single-pass generation.
                 unsafe_allow_html=True
             )
         with col2:
-            st.markdown("### 🔍 Challenger Output (Stress Test)")
+            st.markdown("<h3 style='color:#ffffff;font-weight:700;'>🔍 Challenger Output (Stress Test)</h3>",
+                        unsafe_allow_html=True)
             st.markdown(
                 f"<div style='background:#0d1b0d;border:1px solid #1a4a1a;border-radius:8px;"
                 f"padding:1rem;color:#cde0ef;font-size:0.82rem;line-height:1.7;"
@@ -423,7 +437,6 @@ than a single-pass generation.
                 unsafe_allow_html=True
             )
 
-# --- review & approve tab ---
 with tab_review:
     if st.session_state.stage not in ["reviewing", "complete"]:
         st.info("Run the workflow first. Agents 1-3 must complete before you can review.")
@@ -443,7 +456,8 @@ Adjust any store growth rates if needed, then approve to generate the final plan
         if not td:
             st.warning("No target data found. Please re-run the workflow.")
         else:
-            st.markdown("### Adjust Store Growth Targets (Optional)")
+            st.markdown("<h3 style='color:#ffffff;font-weight:700;'>Adjust Store Growth Targets (Optional)</h3>",
+                        unsafe_allow_html=True)
             adjustments = {}
             for store, data in td.items():
                 col1, col2, col3 = st.columns([3, 2, 2])
@@ -473,7 +487,6 @@ Adjust any store growth rates if needed, then approve to generate the final plan
                 if st.button("✅ Approve & Generate Business Plan Document", type="primary"):
                     with st.spinner("Generating final business plan and Word document..."):
                         try:
-                            # Apply any adjustments to target data
                             for store, new_growth in adjustments.items():
                                 if store in st.session_state.target_data:
                                     old_rev = st.session_state.target_data[store]["fy25_revenue"]
@@ -481,7 +494,6 @@ Adjust any store growth rates if needed, then approve to generate the final plan
                                         old_rev * (1 + new_growth/100), 2)
                                     st.session_state.target_data[store]["growth_rate_pct"] = new_growth
 
-                            # Generate final plan text and document
                             from langchain_openai import ChatOpenAI
                             from langchain_core.messages import HumanMessage, SystemMessage
                             import pandas as pd
@@ -532,7 +544,6 @@ Write a complete plan:
                             st.session_state.final_plan_text = plan_text
                             st.session_state.agent_outputs["final_plan_text"] = plan_text
 
-                            # Build mock state for docx generator
                             mock = {
                                 "target_data": st.session_state.target_data,
                                 "loyalty_data": st.session_state.loyalty_data,
@@ -557,7 +568,6 @@ Write a complete plan:
             else:
                 st.success("✅ Plan approved and document generated. See Business Plan tab.")
 
-# --- business plan tab ---
 with tab_plan:
     if not st.session_state.final_plan_text:
         st.info("Approve the plan in the Review tab to generate the final document.")
@@ -567,7 +577,6 @@ padding:0.7rem 1rem;margin-bottom:1rem;'>
 <span style='color:#4caf7d;font-weight:600;'>✅ FY26 Business Plan Generated</span>
 </div>""", unsafe_allow_html=True)
 
-        # Download button
         docx_path = st.session_state.docx_path
         if docx_path and Path(docx_path).exists():
             with open(docx_path, "rb") as f:
@@ -580,7 +589,6 @@ padding:0.7rem 1rem;margin-bottom:1rem;'>
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             )
 
-        # Display plan
         st.markdown(
             f"<div style='background:#0d1b2a;border:1px solid #1e3a52;border-radius:10px;"
             f"padding:1.5rem;color:#cde0ef;font-size:0.88rem;line-height:1.7;'>"
@@ -589,7 +597,6 @@ padding:0.7rem 1rem;margin-bottom:1rem;'>
             unsafe_allow_html=True
         )
 
-# --- data preview tab ---
 with tab_data:
     import pandas as pd
     fmap = {
@@ -598,27 +605,36 @@ with tab_data:
         "FY25 Loyalty Actuals":         "./data/03_FY25_Loyalty_Actuals.xlsx",
         "Planning Assumptions — Stores":"./data/04_Planning_Assumptions.xlsx",
     }
-    chosen = st.selectbox("Select file:", list(fmap.keys()))
+
+    st.markdown("<p style='color:#ffffff;font-weight:600;font-size:0.9rem;'>Select file:</p>",
+                unsafe_allow_html=True)
+    chosen = st.selectbox("Select file:", list(fmap.keys()), label_visibility="collapsed")
     fp = fmap[chosen]
 
     if Path(fp).exists():
         if "Planning Assumptions" in chosen:
-            sheet = st.selectbox("Sheet:", ["Store Assumptions", "Brand Assumptions", "Planning Parameters"])
+            st.markdown("<p style='color:#ffffff;font-weight:600;font-size:0.9rem;'>Sheet:</p>",
+                        unsafe_allow_html=True)
+            sheet = st.selectbox("Sheet:", ["Store Assumptions", "Brand Assumptions", "Planning Parameters"],
+                                 label_visibility="collapsed")
             df = pd.read_excel(fp, sheet_name=sheet)
         else:
             df = pd.read_excel(fp)
             if 'Store' in df.columns:
                 stores = ["All"] + sorted(df['Store'].unique().tolist())
-                sel_store = st.selectbox("Filter by store:", stores, key="data_store")
+                st.markdown("<p style='color:#ffffff;font-weight:600;font-size:0.9rem;'>Filter by store:</p>",
+                            unsafe_allow_html=True)
+                sel_store = st.selectbox("Filter by store:", stores, key="data_store",
+                                         label_visibility="collapsed")
                 if sel_store != "All":
                     df = df[df['Store'] == sel_store]
 
-        st.caption(f"{len(df):,} rows · {len(df.columns)} columns")
+        st.markdown(f"<p style='color:#8ab4c9;font-size:0.78rem;'>{len(df):,} rows · {len(df.columns)} columns</p>",
+                    unsafe_allow_html=True)
         st.dataframe(df.head(100), use_container_width=True, height=420)
     else:
         st.warning(f"File not found: {fp}. Run generate_data.py first.")
 
-# --- about tab ---
 with tab_about:
     st.markdown("""<div style='color:#cde0ef;line-height:1.75;font-size:0.88rem;'>
 <h3 style='font-family:Playfair Display,serif;color:#2e7d32;margin-top:0;'>
